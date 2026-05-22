@@ -1,0 +1,170 @@
+# values for bitnami/postgresql chart
+# chart version: 18.5.14
+
+fullnameOverride: postgresql
+namespaceOverride: hse-llm-project
+
+architecture: standalone
+
+auth:
+  enablePostgresUser: false
+  username: admin
+  password: admin
+  database: default
+
+extraDeploy:
+  - apiVersion: v1
+    kind: PersistentVolume
+    metadata:
+      name: postgresql-data-pv
+      labels:
+        app.kubernetes.io/name: postgresql
+        app.kubernetes.io/instance: postgresql
+      annotations:
+        helm.sh/resource-policy: keep
+    spec:
+      capacity:
+        storage: 20Gi
+      volumeMode: Filesystem
+      accessModes:
+        - ReadWriteOnce
+      persistentVolumeReclaimPolicy: Retain
+      storageClassName: postgresql-hostpath
+      hostPath:
+        path: /var/lib/postgresql-data
+        type: DirectoryOrCreate
+      nodeAffinity:
+        required:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: In
+                  values:
+                    - worker-1
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: postgresql-data
+      namespace: hse-llm-project
+      labels:
+        app.kubernetes.io/name: postgresql
+        app.kubernetes.io/instance: postgresql
+      annotations:
+        helm.sh/resource-policy: keep
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: 20Gi
+      storageClassName: postgresql-hostpath
+      volumeName: postgresql-data-pv
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: postgresql-ui-servers
+      labels:
+        app.kubernetes.io/name: postgresql-ui
+        app.kubernetes.io/instance: postgresql
+    data:
+      servers.json: |
+        {
+          "Servers": {
+            "1": {
+              "Name": "PostgreSQL (hse-llm-project)",
+              "Group": "Servers",
+              "Host": "postgresql.hse-llm-project.svc.cluster.local",
+              "Port": 5432,
+              "MaintenanceDB": "default",
+              "Username": "admin",
+              "SSLMode": "prefer"
+            }
+          }
+        }
+  - apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: postgresql-ui
+      labels:
+        app.kubernetes.io/name: postgresql-ui
+        app.kubernetes.io/instance: postgresql
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app.kubernetes.io/name: postgresql-ui
+          app.kubernetes.io/instance: postgresql
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: postgresql-ui
+            app.kubernetes.io/instance: postgresql
+        spec:
+          containers:
+            - name: pgadmin
+              image: dpage/pgadmin4:latest
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: PGADMIN_DEFAULT_EMAIL
+                  value: admin@hse-llm-project.com
+                - name: PGADMIN_DEFAULT_PASSWORD
+                  value: admin
+                - name: PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED
+                  value: "False"
+              ports:
+                - name: http
+                  containerPort: 80
+              volumeMounts:
+                - name: pgadmin-servers
+                  mountPath: /pgadmin4/servers.json
+                  subPath: servers.json
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 512Mi
+          volumes:
+            - name: pgadmin-servers
+              configMap:
+                name: postgresql-ui-servers
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: postgresql-ui
+      labels:
+        app.kubernetes.io/name: postgresql-ui
+        app.kubernetes.io/instance: postgresql
+    spec:
+      type: ClusterIP
+      selector:
+        app.kubernetes.io/name: postgresql-ui
+        app.kubernetes.io/instance: postgresql
+      ports:
+        - name: http
+          port: 80
+          targetPort: http
+
+primary:
+  nodeSelector:
+    kubernetes.io/hostname: worker-1
+
+  service:
+    type: ClusterIP
+    ports:
+      postgresql: 5432
+
+  persistence:
+    enabled: true
+    existingClaim: postgresql-data
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+
+volumePermissions:
+  enabled: true
