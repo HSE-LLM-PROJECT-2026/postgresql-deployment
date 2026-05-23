@@ -1,7 +1,5 @@
 # PostgreSQL Deployment
 
-[HSE-LLM-PROJECT-2026/postgresql-deployment](https://github.com/HSE-LLM-PROJECT-2026/postgresql-deployment)
-
 ## Описание
 
 Репозиторий для раскатки PostgreSQL в Kubernetes. База используется сервисами control plane для хранения deployment metadata, релизов, квот, затрат, аудита и пользовательских данных платформы.
